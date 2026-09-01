@@ -167,28 +167,32 @@ namespace PCGExWriteModuleConnectors
 		ConnectorOutput->GetOut()->SetNumPoints(TotalConnectorCount);
 
 		// Create output attributes
-		FPCGMetadataAttribute<int64>* ConnectorRefAttr = ConnectorOutput->CreateAttribute<int64>(
-			Settings->ConnectorOutputAttributeName, PCGExValencyConnector::INVALID_CONNECTOR, true, true);
+		FPCGMetadataAttribute<int64>* ConnectorRefAttr = static_cast<FPCGMetadataAttribute<int64>*>(
+			ConnectorOutput->CreateAttribute<int64>(
+				Settings->ConnectorOutputAttributeName, PCGExValencyConnector::INVALID_CONNECTOR, true, true));
 
 		FPCGMetadataAttribute<int32>* SourceIndexAttr = nullptr;
 		if (Settings->bOutputSourceIndex)
 		{
-			SourceIndexAttr = ConnectorOutput->CreateAttribute<int32>(
-				Settings->SourceIndexAttributeName, -1, false, true);
+			SourceIndexAttr = static_cast<FPCGMetadataAttribute<int32>*>(
+				ConnectorOutput->CreateAttribute<int32>(
+					Settings->SourceIndexAttributeName, -1, false, true));
 		}
 
 		FPCGMetadataAttribute<FName>* ConnectorIdentifierAttr = nullptr;
 		if (Settings->bOutputConnectorIdentifier)
 		{
-			ConnectorIdentifierAttr = ConnectorOutput->CreateAttribute<FName>(
-				Settings->ConnectorIdentifierAttributeName, NAME_None, false, true);
+			ConnectorIdentifierAttr = static_cast<FPCGMetadataAttribute<FName>*>(
+				ConnectorOutput->CreateAttribute<FName>(
+					Settings->ConnectorIdentifierAttributeName, NAME_None, false, true));
 		}
 
 		FPCGMetadataAttribute<FName>* ConnectorTypeAttr = nullptr;
 		if (Settings->bOutputConnectorType)
 		{
-			ConnectorTypeAttr = ConnectorOutput->CreateAttribute<FName>(
-				Settings->ConnectorTypeAttributeName, NAME_None, false, true);
+			ConnectorTypeAttr = static_cast<FPCGMetadataAttribute<FName>*>(
+				ConnectorOutput->CreateAttribute<FName>(
+					Settings->ConnectorTypeAttributeName, NAME_None, false, true));
 		}
 
 		// Get transform ranges
