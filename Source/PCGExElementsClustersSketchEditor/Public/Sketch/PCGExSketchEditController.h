@@ -146,6 +146,9 @@ struct PCGEXELEMENTSCLUSTERSSKETCHEDITOR_API FPCGExSketchHit
  *  - Drag from a vertex: move it (snapped when a basis is active).
  *  - Connect-drag from a vertex (bConnect): release on a vertex links them; release on nothing adds a
  *    snapped vertex there AND links it (the drafting gesture); the far vertex becomes the selection.
+ *  - Detach-drag from an edge (bDetachBranch): when exactly one endpoint is a junction, or the press is
+ *    nearer one of two junction endpoints, duplicate that endpoint, retarget the edge, and drag the new
+ *    endpoint away in one transaction. A zero-length/cancelled gesture restores the original topology.
  */
 class PCGEXELEMENTSCLUSTERSSKETCHEDITOR_API FPCGExSketchEditController
 {
@@ -172,8 +175,9 @@ public:
 	//~ Click
 	void HandleClick(const FRay& WorldRay, bool bAdditive, bool bAddOnEmpty);
 
-	//~ Drag. A press on a vertex moves it (or connects from it); a press on an edge moves both endpoints.
-	void BeginDrag(const FRay& WorldRay, bool bConnect);
+	//~ Drag. A press on a vertex moves it (or connects from it); a press on an edge moves both endpoints,
+	//~ unless bDetachBranch requests the branch-preserving junction rip gesture.
+	void BeginDrag(const FRay& WorldRay, bool bConnect, bool bDetachBranch = false);
 	void UpdateDrag(const FRay& WorldRay);
 	void EndDrag(const FRay& WorldRay);
 	void CancelDrag();
@@ -561,6 +565,10 @@ private:
 	FVector DragEdgeStartA = FVector::ZeroVector;
 	FVector DragEdgeStartB = FVector::ZeroVector;
 	FVector DragStartPoint = FVector::ZeroVector;
+	/** Detach-drag starts with a transient collocated endpoint. A release that did not separate it rolls
+	 *  the whole transaction back instead of publishing an invalid cluster. */
+	FVector DetachStartLocal = FVector::ZeroVector;
+	bool bDetachBranchDrag = false;
 
 	/** See GetDragProposal. */
 	TArray<FVector, TInlineAllocator<2>> DragProposalLocal;
