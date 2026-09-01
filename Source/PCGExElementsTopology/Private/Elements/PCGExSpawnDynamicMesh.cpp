@@ -9,7 +9,9 @@
 #include "Components/DynamicMeshComponent.h"
 #include "Core/PCGExMT.h"
 #include "Data/PCGDynamicMeshData.h"
+#include "Data/PCGExDataHelpers.h"
 #include "Helpers/PCGExStreamingHelpers.h"
+#include "Metadata/PCGMetadata.h"
 
 #define LOCTEXT_NAMESPACE "PCGExGraphSettings"
 #define PCGEX_NAMESPACE SpawnDynamicMesh
@@ -94,6 +96,20 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 				DynamicMeshComponent->SetMaterial(i, Materials[i]);
 			}
 			Settings->TemplateDescriptor.InitComponent(DynamicMeshComponent);
+			if (const UPCGMetadata* Metadata = DynMeshData->ConstMetadata())
+			{
+				const FPCGMetadataDomain* DataDomain = Metadata->GetConstMetadataDomain(PCGMetadataDomainID::Data);
+				const FPCGMetadataAttribute<FTransform>* MeshTransformAttribute = DataDomain
+					? DataDomain->GetConstTypedAttribute<FTransform>(TEXT("MeshTransform"))
+					: nullptr;
+				if (MeshTransformAttribute)
+				{
+					const FTransform MeshWorldTransform =
+						PCGExData::Helpers::ReadDataValue<FTransform>(MeshTransformAttribute);
+					DynamicMeshComponent->SetRelativeTransform(
+						MeshWorldTransform.GetRelativeTransform(TargetActor->GetActorTransform()));
+				}
+			}
 			DynamicMeshComponent->SetMesh(FDynamicMesh3(DynamicMesh->GetMeshRef()));
 		});
 
