@@ -96,7 +96,7 @@ bool FPCGExValencyBondingElement::PostBoot(FPCGExContext* InContext) const
 	// Get fixed pick filter factories if enabled (optional - empty array is valid)
 	if (Settings->bEnableFixedPicks)
 	{
-		GetInputFactories(Context, PCGExValency::Labels::SourceFixedPickFiltersLabel, Context->FixedPickFilterFactories, PCGExFactories::ClusterNodeFilters(), false);
+		PCGExFactories::GetInputFactories(Context, PCGExValency::Labels::SourceFixedPickFiltersLabel, Context->FixedPickFilterFactories, PCGExFactories::ClusterNodeFilters(), false);
 	}
 
 	return true;
