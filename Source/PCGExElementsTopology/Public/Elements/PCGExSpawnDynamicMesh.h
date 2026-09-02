@@ -20,6 +20,13 @@ namespace PCGExSpawnDynamicMesh
 	PCGEXELEMENTSTOPOLOGY_API void InitializeComponentFromData(
 		UDynamicMeshComponent& Component,
 		const UPCGDynamicMeshData& MeshData);
+
+	/**
+	 * Rebuilds collision after mesh data, the component descriptor, and per-input overrides
+	 * have all been applied. UDynamicMeshComponent cooks when its mesh changes, so applying
+	 * collision settings after the mesh without this finalization leaves a stale BodySetup.
+	 */
+	PCGEXELEMENTSTOPOLOGY_API void FinalizeComponentCollision(UDynamicMeshComponent& Component);
 }
 
 UCLASS(MinimalAPI, BlueprintType, ClassGroup = (Procedural), meta=(PCGExNodeLibraryDoc="topology/spawn-dynamic-mesh"))

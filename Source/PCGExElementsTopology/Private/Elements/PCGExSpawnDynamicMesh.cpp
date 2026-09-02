@@ -26,6 +26,18 @@ void PCGExSpawnDynamicMesh::InitializeComponentFromData(
 	MeshData.InitializeDynamicMeshComponentFromData(&Component);
 }
 
+void PCGExSpawnDynamicMesh::FinalizeComponentCollision(UDynamicMeshComponent& Component)
+{
+	// InitializeDynamicMeshComponentFromData sets the mesh before the descriptor and property
+	// overrides are applied. That mesh change performs an early collision cook using the new
+	// component's NoCollision/simple-as-complex defaults. Force one final cook from the settled
+	// settings so query collision uses the exact generated triangles.
+	if (Component.IsCollisionEnabled())
+	{
+		Component.UpdateCollision(false);
+	}
+}
+
 #pragma region UPCGSettings interface
 
 TArray<FPCGPinProperties> UPCGExSpawnDynamicMeshSettings::InputPinProperties() const
@@ -128,6 +140,11 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 				PCGLog::LogWarningOnGraph(FText::Format(LOCTEXT("FailOverride", "Failed to override descriptor for input {0}"), Index));
 			}
 		}
+
+		SourcePCGComponent->IgnoreChangeOriginDuringGenerationWithScope(DynamicMeshComponent, [&]()
+		{
+			PCGExSpawnDynamicMesh::FinalizeComponentCollision(*DynamicMeshComponent);
+		});
 
 		for (const FString& Tag : Input.Tags)
 		{
