@@ -298,9 +298,11 @@ void IPCGExElement::InitializeData(FPCGExContext* InContext, const UPCGExSetting
 	TRACE_CPUPROFILER_EVENT_SCOPE(IPCGExElement::InitializeData)
 
 	const FPCGStack* Stack = InContext->GetStack();
-	if (!ensure(Stack))
+	if (!Stack)
 	{
-		PCGE_LOG_C(Error, LogOnly, InContext, LOCTEXT("ContextHasNoExecutionStack", "The execution context is malformed and has no call stack."));
+		// Direct element tests and other standalone invocations are not scheduled by
+		// FPCGGraphExecutor, so they legitimately have no execution stack. The default
+		// INDEX_NONE loop indices already describe that non-loop execution correctly.
 		return;
 	}
 
