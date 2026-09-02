@@ -296,6 +296,30 @@ bool FPCGExClusterSketchModel::RemoveEdgeAt(const int32 EdgeIndex)
 	return true;
 }
 
+int32 FPCGExClusterSketchModel::DetachEdgeEndpoint(const int32 EdgeIndex, const int32 SharedVertex)
+{
+	if (!Edges.IsValidIndex(EdgeIndex) || !Vertices.IsValidIndex(SharedVertex))
+	{
+		return INDEX_NONE;
+	}
+
+	FPCGExClusterSketchEdge& Edge = Edges[EdgeIndex];
+	if (Edge.A != SharedVertex && Edge.B != SharedVertex)
+	{
+		return INDEX_NONE;
+	}
+
+	FPCGExClusterSketchVertex Detached = Vertices[SharedVertex];
+	Detached.Id = MintElementId();
+#if WITH_EDITORONLY_DATA
+	// This is a deliberate authored endpoint, not disposable split/crossing residue.
+	Detached.bSideEffect = false;
+#endif
+	const int32 DetachedIndex = Vertices.Add(MoveTemp(Detached));
+	(Edge.A == SharedVertex ? Edge.A : Edge.B) = DetachedIndex;
+	return DetachedIndex;
+}
+
 int32 FPCGExClusterSketchModel::MergeVertices(const int32 InAbsorbed, const int32 InSurvivor)
 {
 	if (InAbsorbed == InSurvivor || !Vertices.IsValidIndex(InAbsorbed) || !Vertices.IsValidIndex(InSurvivor))

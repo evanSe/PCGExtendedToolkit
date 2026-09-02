@@ -177,17 +177,19 @@ void UPCGExSketchInputBinder::OnClicked(const FInputDeviceRay& ClickPos)
 
 FInputRayHit UPCGExSketchInputBinder::CanBeginClickDragSequence(const FInputDeviceRay& PressPos)
 {
-	// Ctrl states add/toggle intent -- a wiggled Ctrl+click must stay a CLICK, never convert into a
-	// drag of some vertex that happened to sit near the cursor. Alt belongs to the camera.
-	if (bCtrlDown || bAltDown)
+	// Ctrl alone is add/toggle intent -- a wiggled Ctrl+click must stay a CLICK. Ctrl+Shift on an edge is
+	// the explicit branch-preserving detach gesture. Alt belongs to the camera.
+	if (bAltDown || (bCtrlDown && !bShiftDown))
 	{
 		return FInputRayHit();
 	}
 
 	const TSharedPtr<FPCGExSketchEditController> Controller = Resolve(PressPos.WorldRay);
 	const FPCGExSketchHit Hit = Controller ? Controller->HitTest(PressPos.WorldRay) : FPCGExSketchHit();
-	// Vertices move or connect; an edge drag moves both its endpoints.
-	return (Hit.IsVertex() || Hit.IsEdge()) ? FInputRayHit(Hit.RayT) : FInputRayHit();
+	// Vertices move or connect; an edge drag moves both endpoints, or detaches its junction endpoint when
+	// Ctrl+Shift is held. Ctrl+Shift never captures a vertex.
+	const bool bEligible = bCtrlDown && bShiftDown ? Hit.IsEdge() : (Hit.IsVertex() || Hit.IsEdge());
+	return bEligible ? FInputRayHit(Hit.RayT) : FInputRayHit();
 }
 
 void UPCGExSketchInputBinder::OnClickPress(const FInputDeviceRay& PressPos)
@@ -197,7 +199,10 @@ void UPCGExSketchInputBinder::OnClickPress(const FInputDeviceRay& PressPos)
 	DragController = Resolve(PressPos.WorldRay);
 	if (DragController)
 	{
-		DragController->BeginDrag(PressPos.WorldRay, /*bConnect*/ bShiftDown);
+		DragController->BeginDrag(
+			PressPos.WorldRay,
+			/*bConnect*/ bShiftDown && !bCtrlDown,
+			/*bDetachBranch*/ bShiftDown && bCtrlDown);
 	}
 }
 

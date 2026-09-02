@@ -249,6 +249,17 @@ struct PCGEXELEMENTSCLUSTERSSKETCH_API FPCGExClusterSketchModel
 	bool RemoveEdgeAt(int32 EdgeIndex);
 
 	/**
+	 * Detach one endpoint of an existing edge without deleting any geometry: duplicate SharedVertex,
+	 * preserve its authored transform/data/lattice state, and retarget only EdgeIndex onto the duplicate.
+	 * The duplicate is intentionally collocated until the authoring gesture moves it; callers must keep
+	 * this mutation inside the same transaction as that move and cancel a zero-length gesture.
+	 * Constraints stay on the original shared vertex; edge constraints remain valid because the edge id
+	 * itself is preserved.
+	 * @return the new detached vertex index, or INDEX_NONE for an invalid/non-incident pair.
+	 */
+	int32 DetachEdgeEndpoint(int32 EdgeIndex, int32 SharedVertex);
+
+	/**
 	 * Merge InAbsorbed into InSurvivor: every edge of the absorbed vertex retargets its endpoint onto
 	 * the survivor (edges that would become self-loops or duplicates are dropped, the survivor edge's
 	 * record winning), then the absorbed vertex is removed. The survivor INHERITS the absorbed vertex's

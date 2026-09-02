@@ -482,7 +482,7 @@ void FPCGExSketchEditController::HandleClick(const FRay& WorldRay, const bool bA
 	NotifyModelChanged();
 }
 
-void FPCGExSketchEditController::BeginDrag(const FRay& WorldRay, const bool bConnect)
+void FPCGExSketchEditController::BeginDrag(const FRay& WorldRay, const bool bConnect, const bool bDetachBranch)
 {
 	CancelDrag();
 	ResolveSelectionIndices();
@@ -507,15 +507,74 @@ void FPCGExSketchEditController::BeginDrag(const FRay& WorldRay, const bool bCon
 	LastLocalRay = LocalRay;
 	bHasLastLocalRay = true;
 	DragProposalLocal.Reset();
+	bDetachBranchDrag = false;
 
 	if (Hit.IsEdge())
 	{
-		// Connect has no meaning from an edge; a press on one always moves it, whatever the modifier.
 		const FPCGExClusterSketchEdge& E = Model->Edges[Hit.Index];
 		if (!Model->Vertices.IsValidIndex(E.A) || !Model->Vertices.IsValidIndex(E.B))
 		{
 			return;
 		}
+
+		if (bDetachBranch)
+		{
+			auto Degree = [Model](const int32 VertexIndex)
+			{
+				int32 Result = 0;
+				for (const FPCGExClusterSketchEdge& Candidate : Model->Edges)
+				{
+					Result += Candidate.A == VertexIndex || Candidate.B == VertexIndex ? 1 : 0;
+				}
+				return Result;
+			};
+
+			const int32 DegreeA = Degree(E.A);
+			const int32 DegreeB = Degree(E.B);
+			if (DegreeA < 3 && DegreeB < 3)
+			{
+				return;
+			}
+
+			int32 SharedVertex = DegreeA >= 3 ? E.A : E.B;
+			if (DegreeA >= 3 && DegreeB >= 3)
+			{
+				auto RayDistanceSquared = [&LocalRay](const FVector& Point)
+				{
+					const double T = FMath::Max(0.0, FVector::DotProduct(Point - LocalRay.Origin, LocalRay.Direction));
+					return FVector::DistSquared(LocalRay.Origin + LocalRay.Direction * T, Point);
+				};
+				SharedVertex = RayDistanceSquared(VertexLocation(Model->Vertices[E.A], BasisPtr))
+					<= RayDistanceSquared(VertexLocation(Model->Vertices[E.B], BasisPtr)) ? E.A : E.B;
+			}
+
+			ActiveTransaction = MakeUnique<FScopedTransaction>(LOCTEXT("DetachBranch", "Detach Sketch Branch"));
+			Target->BeginAuthoring();
+			const int32 DetachedVertex = Model->DetachEdgeEndpoint(Hit.Index, SharedVertex);
+			if (DetachedVertex == INDEX_NONE)
+			{
+				ActiveTransaction->Cancel();
+				ActiveTransaction.Reset();
+				return;
+			}
+
+			DragMode = EDragMode::Move;
+			DragVertexIndex = DetachedVertex;
+			DragEdgeIndex = INDEX_NONE;
+			DragTargetVertexIndex = INDEX_NONE;
+			MergeCandidateVertex = INDEX_NONE;
+			DragPreviewLocal = VertexLocation(Model->Vertices[DetachedVertex], BasisPtr);
+			DetachStartLocal = DragPreviewLocal;
+			bDetachBranchDrag = true;
+
+			const bool bWillSnap = BasisPtr && (bSnapEnabled || Model->Vertices[DetachedVertex].bLatticeBound);
+			EnsurePlacementGesture(EPlacementGesture::Move, DetachedVertex, DragPreviewLocal, BasisPtr, bWillSnap);
+			ClearSelection();
+			SelectVertex(DetachedVertex);
+			return;
+		}
+
+		// Connect has no meaning from an edge; a press on one normally moves it, whatever the modifier.
 		DragMode = EDragMode::MoveEdge;
 		DragEdgeIndex = Hit.Index;
 		DragVertexIndex = INDEX_NONE;
@@ -768,8 +827,20 @@ void FPCGExSketchEditController::EndDrag(const FRay& WorldRay)
 			Model->EnforceSeparationAroundVertex(FinalVertex, bDragHasBasis ? &DragBasis : nullptr);
 			SolveConstraints(bDragHasBasis ? &DragBasis : nullptr);
 		}
-		EndTransaction();
-		NotifyModelChanged();
+		if (bDetachBranchDrag && Model && Model->Vertices.IsValidIndex(FinalVertex)
+			&& FVector::DistSquared(VertexLocation(Model->Vertices[FinalVertex], bDragHasBasis ? &DragBasis : nullptr), DetachStartLocal)
+			<= FMath::Square(PCGExSketch::CoincidenceTolerance))
+		{
+			ActiveTransaction->Cancel();
+			ActiveTransaction.Reset();
+			ClearSelection();
+			NotifyExternalChange();
+		}
+		else
+		{
+			EndTransaction();
+			NotifyModelChanged();
+		}
 	}
 	else // Connect
 	{
@@ -857,6 +928,7 @@ void FPCGExSketchEditController::EndDrag(const FRay& WorldRay)
 	DragEdgeIndex = INDEX_NONE;
 	DragTargetVertexIndex = INDEX_NONE;
 	MergeCandidateVertex = INDEX_NONE;
+	bDetachBranchDrag = false;
 	DragProposalLocal.Reset();
 	PlacementGesture = EPlacementGesture::None;
 	Placement.ResetGuide();
@@ -877,6 +949,7 @@ void FPCGExSketchEditController::CancelDrag()
 	DragEdgeIndex = INDEX_NONE;
 	DragTargetVertexIndex = INDEX_NONE;
 	MergeCandidateVertex = INDEX_NONE;
+	bDetachBranchDrag = false;
 	DragProposalLocal.Reset();
 	PlacementGesture = EPlacementGesture::None;
 	Placement.ResetGuide();

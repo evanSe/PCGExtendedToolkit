@@ -9,10 +9,34 @@
 #include "Components/DynamicMeshComponent.h"
 #include "Core/PCGExMT.h"
 #include "Data/PCGDynamicMeshData.h"
+#include "Data/PCGExDataHelpers.h"
 #include "Helpers/PCGExStreamingHelpers.h"
+#include "Metadata/PCGMetadata.h"
 
 #define LOCTEXT_NAMESPACE "PCGExGraphSettings"
 #define PCGEX_NAMESPACE SpawnDynamicMesh
+
+void PCGExSpawnDynamicMesh::InitializeComponentFromData(
+	UDynamicMeshComponent& Component,
+	const UPCGDynamicMeshData& MeshData)
+{
+	// Keep the native PCG Dynamic Mesh contract in one place. In particular, material
+	// slots must survive the data-to-component handoff instead of silently falling back
+	// to the default gray material.
+	MeshData.InitializeDynamicMeshComponentFromData(&Component);
+}
+
+void PCGExSpawnDynamicMesh::FinalizeComponentCollision(UDynamicMeshComponent& Component)
+{
+	// InitializeDynamicMeshComponentFromData sets the mesh before the descriptor and property
+	// overrides are applied. That mesh change performs an early collision cook using the new
+	// component's NoCollision/simple-as-complex defaults. Force one final cook from the settled
+	// settings so query collision uses the exact generated triangles.
+	if (Component.IsCollisionEnabled())
+	{
+		Component.UpdateCollision(false);
+	}
+}
 
 #pragma region UPCGSettings interface
 
@@ -84,17 +108,27 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 
 		SourcePCGComponent->IgnoreChangeOriginDuringGenerationWithScope(DynamicMeshComponent, [&]()
 		{
-			const UDynamicMesh* DynamicMesh = DynMeshData->GetDynamicMesh();
-			const TArray<TObjectPtr<UMaterialInterface>>& Materials = DynMeshData->GetMaterials();
-
-			//DynMeshData->InitializeDynamicMeshComponentFromData(Component);
-
-			for (int32 i = 0; i < Materials.Num(); ++i)
-			{
-				DynamicMeshComponent->SetMaterial(i, Materials[i]);
-			}
+			PCGExSpawnDynamicMesh::InitializeComponentFromData(*DynamicMeshComponent, *DynMeshData);
 			Settings->TemplateDescriptor.InitComponent(DynamicMeshComponent);
-			DynamicMeshComponent->SetMesh(FDynamicMesh3(DynamicMesh->GetMeshRef()));
+			if (const UPCGMetadata* Metadata = DynMeshData->ConstMetadata())
+			{
+				const FPCGMetadataDomain* DataDomain = Metadata->GetConstMetadataDomain(PCGMetadataDomainID::Data);
+				const FPCGMetadataAttribute<FTransform>* MeshTransformAttribute = DataDomain
+					? DataDomain->GetConstTypedAttribute<FTransform>(TEXT("MeshTransform"))
+					: nullptr;
+				if (MeshTransformAttribute)
+				{
+					const FTransform MeshTransform =
+						PCGExData::Helpers::ReadDataValue<FTransform>(MeshTransformAttribute);
+					FTransform ComponentRelativeTransform =
+						MeshTransform.GetRelativeTransform(TargetActor->GetActorTransform());
+					// Spline To Mesh's origin and basis are world-space, but its scale already
+					// carries the source spline's parent-relative frame. Converting that scale by
+					// the target actor again applies the inverse parent scale twice.
+					ComponentRelativeTransform.SetScale3D(MeshTransform.GetScale3D());
+					DynamicMeshComponent->SetRelativeTransform(ComponentRelativeTransform);
+				}
+			}
 		});
 
 		if (!Settings->PropertyOverrideDescriptions.IsEmpty())
@@ -106,6 +140,11 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 				PCGLog::LogWarningOnGraph(FText::Format(LOCTEXT("FailOverride", "Failed to override descriptor for input {0}"), Index));
 			}
 		}
+
+		SourcePCGComponent->IgnoreChangeOriginDuringGenerationWithScope(DynamicMeshComponent, [&]()
+		{
+			PCGExSpawnDynamicMesh::FinalizeComponentCollision(*DynamicMeshComponent);
+		});
 
 		for (const FString& Tag : Input.Tags)
 		{
