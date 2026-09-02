@@ -16,6 +16,16 @@
 #define LOCTEXT_NAMESPACE "PCGExGraphSettings"
 #define PCGEX_NAMESPACE SpawnDynamicMesh
 
+void PCGExSpawnDynamicMesh::InitializeComponentFromData(
+	UDynamicMeshComponent& Component,
+	const UPCGDynamicMeshData& MeshData)
+{
+	// Keep the native PCG Dynamic Mesh contract in one place. In particular, material
+	// slots must survive the data-to-component handoff instead of silently falling back
+	// to the default gray material.
+	MeshData.InitializeDynamicMeshComponentFromData(&Component);
+}
+
 #pragma region UPCGSettings interface
 
 TArray<FPCGPinProperties> UPCGExSpawnDynamicMeshSettings::InputPinProperties() const
@@ -86,15 +96,7 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 
 		SourcePCGComponent->IgnoreChangeOriginDuringGenerationWithScope(DynamicMeshComponent, [&]()
 		{
-			const UDynamicMesh* DynamicMesh = DynMeshData->GetDynamicMesh();
-			const TArray<TObjectPtr<UMaterialInterface>>& Materials = DynMeshData->GetMaterials();
-
-			//DynMeshData->InitializeDynamicMeshComponentFromData(Component);
-
-			for (int32 i = 0; i < Materials.Num(); ++i)
-			{
-				DynamicMeshComponent->SetMaterial(i, Materials[i]);
-			}
+			PCGExSpawnDynamicMesh::InitializeComponentFromData(*DynamicMeshComponent, *DynMeshData);
 			Settings->TemplateDescriptor.InitComponent(DynamicMeshComponent);
 			if (const UPCGMetadata* Metadata = DynMeshData->ConstMetadata())
 			{
@@ -104,13 +106,17 @@ bool FPCGExSpawnDynamicMeshElement::AdvanceWork(FPCGExContext* InContext, const 
 					: nullptr;
 				if (MeshTransformAttribute)
 				{
-					const FTransform MeshWorldTransform =
+					const FTransform MeshTransform =
 						PCGExData::Helpers::ReadDataValue<FTransform>(MeshTransformAttribute);
-					DynamicMeshComponent->SetRelativeTransform(
-						MeshWorldTransform.GetRelativeTransform(TargetActor->GetActorTransform()));
+					FTransform ComponentRelativeTransform =
+						MeshTransform.GetRelativeTransform(TargetActor->GetActorTransform());
+					// Spline To Mesh's origin and basis are world-space, but its scale already
+					// carries the source spline's parent-relative frame. Converting that scale by
+					// the target actor again applies the inverse parent scale twice.
+					ComponentRelativeTransform.SetScale3D(MeshTransform.GetScale3D());
+					DynamicMeshComponent->SetRelativeTransform(ComponentRelativeTransform);
 				}
 			}
-			DynamicMeshComponent->SetMesh(FDynamicMesh3(DynamicMesh->GetMeshRef()));
 		});
 
 		if (!Settings->PropertyOverrideDescriptions.IsEmpty())
